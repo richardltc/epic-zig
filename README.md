@@ -80,6 +80,14 @@ file can be overridden on the command line; `epic-zig --help` lists the options.
 
 Ctrl-C (or SIGTERM) shuts the node down cleanly.
 
+## Updates
+
+Release builds check this repository's GitHub releases at startup. If a newer release exists, the node
+downloads the package for its platform, checks it against the release's `SHA256SUMS`, replaces its own
+binary and restarts with the same options. If anything fails (no network, no write access to the binary's
+folder, a checksum mismatch) it carries on with the current version. Pre-releases are not installed.
+Turn this off with `auto_update = false` in the `[update]` section of `epic-zig.toml`, or `--no-update`.
+
 ## License
 
 Apache License 2.0, the same as the Rust node; see [LICENSE](LICENSE). The vendored libraries keep their own

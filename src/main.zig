@@ -40,6 +40,7 @@ const usage =
     \\  --allow-local-peers   accept private/loopback addresses as peers (tests, LANs)
     \\  --archive             keep every block (compaction only prunes the txhashset)
     \\  --floonet             use the floonet chain (default is mainnet)
+    \\  --no-update           don't check GitHub for a newer release at startup (config: auto_update)
     \\  --debug               also show DEBUG log lines (dial failures, rejected txs, timings)
     \\
     \\Ctrl-C (or SIGTERM) shuts down cleanly; a second Ctrl-C exits at once.
@@ -103,6 +104,7 @@ const Cli = struct {
     disable_checkpoints: bool = false,
     extended_checkpoints: bool = false,
     floonet: bool = false,
+    no_update: bool = false,
     opts: epic.sync.Options = .{},
 };
 
@@ -165,6 +167,8 @@ fn parseCli(arena: std.mem.Allocator, args: []const []const u8) !Cli {
             // the old opt-out; that is the default now
         } else if (eq(u8, a, "--verify-all-pow")) {
             cli.verify_all_pow = true;
+        } else if (eq(u8, a, "--no-update")) {
+            cli.no_update = true;
         } else if (eq(u8, a, "--debug")) {
             epic.logging.show_debug = true;
         } else if (eq(u8, a, "--floonet")) {
@@ -280,6 +284,9 @@ pub fn main(init: std.process.Init) !void {
             });
         }
     }
+
+    // before anything is opened: a newer release replaces this binary and restarts it
+    if (fc.auto_update and !cli.no_update) epic.updater.run(gpa, io, args, init.environ_map);
 
     epic.shutdown.install();
 

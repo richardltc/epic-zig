@@ -46,6 +46,10 @@ pub const Config = struct {
     aggregation_secs: i64 = 30,
     stem_probability: u8 = 90,
     always_stem_our_txs: bool = true,
+
+    // [update]
+    /// Check GitHub for a newer release at startup and install it.
+    auto_update: bool = true,
 };
 
 pub const default_text =
@@ -87,6 +91,9 @@ pub const default_text =
     \\aggregation_secs = 30
     \\stem_probability = 90            # percent of epochs that relay ("stem") transactions
     \\always_stem_our_txs = true
+    \\
+    \\[update]
+    \\auto_update = true               # at startup, install a newer release from GitHub (checksum-verified) and restart
     \\
 ;
 
@@ -264,6 +271,11 @@ fn set(arena: std.mem.Allocator, cfg: *Config, section: []const u8, key: []const
             cfg.mineable_max_weight = try parseInt(usize, v, diag);
             return;
         }
+    } else if (eq(u8, section, "update")) {
+        if (eq(u8, key, "auto_update")) {
+            cfg.auto_update = try parseBool(v, diag);
+            return;
+        }
     } else if (eq(u8, section, "dandelion")) {
         if (eq(u8, key, "epoch_secs")) {
             cfg.epoch_secs = try parseInt(i64, v, diag);
@@ -287,8 +299,18 @@ fn set(arena: std.mem.Allocator, cfg: *Config, section: []const u8, key: []const
             cfg.always_stem_our_txs = try parseBool(v, diag);
             return;
         }
-    } else return fail(diag, "unknown section");
-    return fail(diag, "unknown key");
+    } else {
+        unknown(diag, section, key);
+        return;
+    }
+    unknown(diag, section, key);
+}
+
+/// Settings this version doesn't know (from a newer or older version, or a
+/// typo) are reported and skipped, as the Rust node does, so changing versions
+/// never stops the node from starting.
+fn unknown(diag: *const Diag, section: []const u8, key: []const u8) void {
+    std.log.warn("Ignoring unknown setting '{s}' in [{s}] (line {d} of the settings file)", .{ key, section, diag.line });
 }
 
 /// Loads `path` (relative to `dir`), writing the default file first if it
@@ -348,8 +370,11 @@ test "values, comments, arrays and errors" {
     try testing.expect(!c.api_auth);
     try testing.expectEqual(@as(u64, 1000), c.accept_fee_base);
 
-    try testing.expectError(error.BadConfig, parse(a, "[p2p]\nnope = 1", .{}, &diag));
-    try testing.expectEqual(@as(usize, 2), diag.line);
+    // unknown sections and keys are skipped, not fatal
+    const skipped = try parse(a, "[p2p]\nnope = 1\n[future]\nthing = true\n[api]\nauth = false", .{}, &diag);
+    try testing.expect(!skipped.api_auth);
+    // bad values still are, with the line reported
     try testing.expectError(error.BadConfig, parse(a, "[dandelion]\nstem_probability = 150", .{}, &diag));
+    try testing.expectEqual(@as(usize, 2), diag.line);
     try testing.expectError(error.BadConfig, parse(a, "[api]\nauth = maybe", .{}, &diag));
 }
