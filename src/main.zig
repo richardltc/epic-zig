@@ -10,7 +10,7 @@ const builtin = @import("builtin");
 const epic = @import("epic");
 
 const N = epic.logging.num;
-const VERSION = "0.1.0";
+const VERSION = epic.version.VERSION;
 
 pub const std_options: std.Options = .{ .logFn = epic.logging.logFn };
 

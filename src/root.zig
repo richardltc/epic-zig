@@ -32,6 +32,7 @@ pub const transaction = @import("transaction.zig");
 pub const compact_block = @import("compact_block.zig");
 pub const peers = @import("peers.zig");
 pub const node = @import("node.zig");
+pub const version = @import("version.zig");
 
 comptime {
     _ = @import("secp.zig");

@@ -13,6 +13,9 @@ only faster. `PLAN.md` records what has been built and why.
 - `zig build`: debug build in `zig-out/bin/epic-zig`.
 - `zig build --release`: ReleaseSafe, stripped (the vendored C/C++ libraries are always ReleaseFast).
 - Portable Linux release: `zig build --release -Dtarget=x86_64-linux-gnu.2.28 --prefix local/xbuild/x86_64-linux-glibc2.28`.
+- Releases: `scripts/release.sh` (tests, builds Linux x86_64/ARM64 glibc 2.28, macOS Intel/Apple Silicon and Windows,
+  packages them with SHA256SUMS, tags `v<VERSION>` and publishes a GitHub release). `--build-only` builds into `dist/`
+  without tagging or uploading; `--draft` leaves the release as a draft. The version lives in `src/version.zig`.
 - Other targets: `-Dtarget=aarch64-linux-gnu`, `x86_64-windows-gnu`, `aarch64-macos`, `x86_64-macos` (built, not yet run on real machines).
 
 ## Safety on this machine

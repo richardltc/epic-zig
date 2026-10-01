@@ -62,6 +62,9 @@ pub fn build(b: *std.Build) void {
     test_mod.addCMacro("CROARING_COMPILER_SUPPORTS_AVX512", "0");
     // translate-c can't parse <stdatomic.h>; refcounts are internal to the library only.
     test_mod.addCMacro("CROARING_ATOMIC_IMPL", "1");
+    // ReleaseSafe turns on _FORTIFY_SOURCE, and MinGW's fortified string
+    // wrappers don't survive translate-c; our Zig code never calls them.
+    if (target.result.os.tag == .windows) test_mod.addCMacro("_FORTIFY_SOURCE", "0");
     test_mod.addIncludePath(b.path("vendor/randomx-rust/randomx/src"));
     test_mod.addIncludePath(b.path("vendor/rocksdb/include"));
     test_mod.linkLibrary(secp);

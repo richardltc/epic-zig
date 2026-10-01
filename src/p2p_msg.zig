@@ -10,7 +10,7 @@ const Difficulty = @import("pow_types.zig").Difficulty;
 const Hash = hash_mod.Hash;
 const ChainType = consensus.ChainType;
 
-pub const USER_AGENT = "MW/Epic-Zig 0.1.0";
+pub const USER_AGENT = "MW/Epic-Zig " ++ @import("version.zig").VERSION;
 
 pub const MAX_BLOCK_HEADERS: u32 = 512;
 pub const MAX_PEER_ADDRS: u32 = 256;

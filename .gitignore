@@ -10,3 +10,6 @@ local/
 .api_secret
 .foreign_api_secret
 *.log
+
+# Release packages (scripts/release.sh)
+dist/

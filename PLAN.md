@@ -183,3 +183,4 @@ gave 1,100-1,850/s early and ~9,500/s later from the same peer. DNS seed + the s
 ## Release builds
 - `zig build --release` = ReleaseSafe (Zig runtime safety checks on; the vendored C/C++ libs are always built ReleaseFast). Release builds are stripped (`-Dstrip=false` keeps debug info): 151 MB -> 16 MB.
 - Portable Linux build: `zig build --release -Dtarget=x86_64-linux-gnu.2.28 --prefix local/xbuild/x86_64-linux-glibc2.28` needs glibc >= 2.28 only (Ubuntu 20.04+, Debian 10+, RHEL 8+).
+- `scripts/release.sh`: builds and packages all five targets (ReleaseSafe, stripped, ~7 MB each), writes SHA256SUMS, tags `v<VERSION>` (from `src/version.zig`, now the single source for the banner and the user agent) and publishes with `gh release create`. On Windows `_FORTIFY_SOURCE` is set to 0 for translate-c: ReleaseSafe enables it and MinGW's fortified wrappers don't translate.
