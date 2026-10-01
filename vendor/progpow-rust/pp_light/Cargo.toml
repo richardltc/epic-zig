@@ -1,0 +1,19 @@
+[package]
+name = "progpow_cpu"
+version = "0.1.0"
+authors = ["Yuri Albuquerque <yuridenommus@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+primal = "0.2.3"
+keccak-hash = "0.2.0"
+either = "1.5.2"
+memmap = "0.7.0"
+parking_lot = "0.8.0"
+log = "0.4"
+crunchy = "0.2.2"
+
+[dev-dependencies]
+tempdir = "0.3.7"
+rustc-hex = "2.0.1"
+serde_json = "1.0.39"

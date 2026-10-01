@@ -1,0 +1,17 @@
+[package]
+name = "randomx"
+version = "0.2.0"
+authors = ["Brick Abode <epiccash@brickabode.com>"]
+build = "build.rs"
+edition = "2021"
+
+[dependencies]
+libc = "0.2.171"
+num-bigint = "0.4"
+byteorder = "1.5.0"
+hex-literal = "1.0.0"
+
+[build-dependencies]
+bindgen = "0.71.1"
+cmake = "0.1.54"
+filetime = "0.2.25"

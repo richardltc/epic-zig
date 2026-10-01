@@ -1,0 +1,12 @@
+# Zig build output and cache
+.zig-cache/
+zig-cache/
+zig-out/
+
+# Local test nodes, chain data, logs and cross-builds (never commit chain data or API secrets)
+local/
+
+# Node data and secrets, wherever a test run puts them
+.api_secret
+.foreign_api_secret
+*.log

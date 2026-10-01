@@ -1,0 +1,12 @@
+Source: librandomx
+Section: utils
+Priority: optional
+Maintainer: Yuri Albuquerque <yurialbuquerque@brickabode.com>
+Build-Depends: cmake, build-essential, debhelper
+Standards-Version: 4.0.0
+Homepage: http://brickabode.com/
+
+Package: librandomx
+Architecture: amd64
+Depends: ${misc:Depends}
+Description: Epic server

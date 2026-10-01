@@ -1,0 +1,36 @@
+[package]
+name = "progpow"
+version = "0.1.0"
+authors = ["Brick Abode <epiccash@brickabode.com>"]
+edition = "2021"
+
+[dependencies]
+libc = "0.2.171"
+num-bigint = "0.4"
+num-traits = "0.2"
+byteorder = "1.5.0"
+lazy_static = "1"
+dirs = "1.0.3"
+progpow_cpu = { path = "./pp_light" }
+
+
+[build-dependencies]
+bindgen = "0.71.1"
+cmake = "0.1.54"
+filetime = "0.2.25"
+
+[dependencies.progpow_gpu_cuda]
+package = "progpow_gpu"
+path = "./pp_full"
+features = ['cuda']
+optional = true
+
+[dependencies.progpow_gpu_opencl]
+package = "progpow_gpu"
+path = "./pp_full"
+features = ['opencl']
+optional = true
+
+[features]
+opencl = ["progpow_gpu_opencl"]
+cuda = ["progpow_gpu_cuda"]
