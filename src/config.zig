@@ -47,6 +47,16 @@ pub const Config = struct {
     stem_probability: u8 = 90,
     always_stem_our_txs: bool = true,
 
+    // [logging] (the reference's names and defaults, except that the file is on)
+    log_to_stdout: bool = true,
+    stdout_log_level: []const u8 = "Info",
+    log_to_file: bool = true,
+    file_log_level: []const u8 = "Debug",
+    log_file_path: []const u8 = "epic-zig.log",
+    log_file_append: bool = true,
+    log_max_size: u64 = 16 << 20,
+    log_max_files: u32 = 32,
+
     // [update]
     /// Check GitHub for a newer release at startup and install it.
     auto_update: bool = true,
@@ -91,6 +101,16 @@ pub const default_text =
     \\aggregation_secs = 30
     \\stem_probability = 90            # percent of epochs that relay ("stem") transactions
     \\always_stem_our_txs = true
+    \\
+    \\[logging]
+    \\log_to_stdout = true
+    \\stdout_log_level = "Info"        # Error, Warning, Info, Debug
+    \\log_to_file = true               # also write a log file (send it with bug reports)
+    \\file_log_level = "Debug"
+    \\log_file_path = "epic-zig.log"   # relative paths are in the data dir
+    \\log_file_append = true           # false: start a new file on every run
+    \\log_max_size = 16777216          # rotate after this many bytes (into .0.gz, .1.gz, ...)
+    \\log_max_files = 32               # rotated files to keep
     \\
     \\[update]
     \\auto_update = true               # at startup, install a newer release from GitHub (checksum-verified) and restart
@@ -269,6 +289,37 @@ fn set(arena: std.mem.Allocator, cfg: *Config, section: []const u8, key: []const
         }
         if (eq(u8, key, "mineable_max_weight")) {
             cfg.mineable_max_weight = try parseInt(usize, v, diag);
+            return;
+        }
+    } else if (eq(u8, section, "logging")) {
+        if (eq(u8, key, "log_to_stdout")) {
+            cfg.log_to_stdout = try parseBool(v, diag);
+            return;
+        }
+        if (eq(u8, key, "stdout_log_level") or eq(u8, key, "file_log_level")) {
+            const lv = try parseString(arena, v, diag);
+            if (@import("logging.zig").Level.parse(lv) == null) return fail(diag, "expected Error, Warning, Info or Debug");
+            if (eq(u8, key, "stdout_log_level")) cfg.stdout_log_level = lv else cfg.file_log_level = lv;
+            return;
+        }
+        if (eq(u8, key, "log_to_file")) {
+            cfg.log_to_file = try parseBool(v, diag);
+            return;
+        }
+        if (eq(u8, key, "log_file_path")) {
+            cfg.log_file_path = try parseString(arena, v, diag);
+            return;
+        }
+        if (eq(u8, key, "log_file_append")) {
+            cfg.log_file_append = try parseBool(v, diag);
+            return;
+        }
+        if (eq(u8, key, "log_max_size")) {
+            cfg.log_max_size = try parseInt(u64, v, diag);
+            return;
+        }
+        if (eq(u8, key, "log_max_files")) {
+            cfg.log_max_files = try parseInt(u32, v, diag);
             return;
         }
     } else if (eq(u8, section, "update")) {

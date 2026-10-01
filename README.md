@@ -80,6 +80,11 @@ file can be overridden on the command line; `epic-zig --help` lists the options.
 
 Ctrl-C (or SIGTERM) shuts the node down cleanly.
 
+The node also writes `<folder>/epic-zig.log` (including DEBUG lines, which the console hides). It is
+rotated at 16 MB into `epic-zig.log.0.gz`, `.1.gz`, ... with 32 kept; crashes are recorded in it too.
+When reporting a problem, please include this file. The `[logging]` settings use the Rust node's names
+(`log_to_file`, `file_log_level`, `log_max_size`, ...).
+
 ## Updates
 
 Release builds check this repository's GitHub releases at startup. If a newer release exists, the node

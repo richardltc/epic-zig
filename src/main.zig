@@ -14,6 +14,15 @@ const VERSION = epic.version.VERSION;
 
 pub const std_options: std.Options = .{ .logFn = epic.logging.logFn };
 
+/// Crashes (failed safety checks in release builds) also go to the log file,
+/// so a user can send it in.
+pub const panic = std.debug.FullPanic(panicWithLog);
+
+fn panicWithLog(msg: []const u8, first_trace_addr: ?usize) noreturn {
+    epic.logging.panicToFile(msg, first_trace_addr orelse @returnAddress());
+    std.debug.defaultPanic(msg, first_trace_addr);
+}
+
 const usage =
     \\usage: epic-zig --data-dir DIR [options]
     \\
@@ -222,6 +231,14 @@ fn shutdownWatcher(r: *Running) void {
 }
 
 pub fn main(init: std.process.Init) !void {
+    run(init) catch |e| {
+        // the console gets Zig's own report too; this puts it in the log file
+        epic.logging.err("Epic-Zig stopped with an error: {s}", .{@errorName(e)});
+        return e;
+    };
+}
+
+fn run(init: std.process.Init) !void {
     const gpa = init.gpa;
     const io = init.io;
     const arena = init.arena.allocator();
@@ -269,6 +286,16 @@ pub fn main(init: std.process.Init) !void {
     const use_seeds = discover and fc.seeds and (peer == null or cli.seeds or cli.max_outbound != null);
     const outbound: u32 = if (!discover) 0 else (cli.max_outbound orelse fc.max_outbound);
 
+    epic.logging.to_stdout = fc.log_to_stdout;
+    epic.logging.stdout_level = epic.logging.Level.parse(fc.stdout_log_level) orelse .info;
+    if (fc.log_to_file) {
+        epic.logging.openFile(io, data_dir, fc.log_file_path, .{
+            .level = epic.logging.Level.parse(fc.file_log_level) orelse .debug,
+            .append = fc.log_file_append,
+            .max_size = if (fc.log_max_size == 0) null else fc.log_max_size,
+            .max_files = fc.log_max_files,
+        }) catch |e| epic.logging.warn("Can't write the log file {s}: {s}", .{ fc.log_file_path, @errorName(e) });
+    }
     epic.logging.info("This is Epic-Zig version {s}, built for {s}-{s} by Zig {s}.", .{ VERSION, @tagName(builtin.cpu.arch), @tagName(builtin.os.tag), builtin.zig_version_string });
     epic.logging.info("Using configuration file at {s}{s}", .{ if (cli.config) |p| p else dd, if (cli.config == null) "/" ++ epic.config.FILE_NAME else "" });
     epic.logging.info("Chain: {s}, data dir {s}, peers: {s}", .{ @tagName(cfg.chain), dd, if (peer) |p| p else "from the network's seeds" });
