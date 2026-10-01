@@ -206,6 +206,7 @@ pub const Chain = struct {
         self.sync_mmr = try HeaderMmr.open(gpa, io, self.sync_dir);
         errdefer self.sync_mmr.close();
 
+        self.recoverTxhashsetSwap();
         self.ths_dir = try self.root.createDirPathOpen(io, "txhashset", .{});
         errdefer self.ths_dir.close(io);
         self.ths = try TxHashSet.open(gpa, io, cfg.chain, self.ths_dir, Tip.fromHeader(self.genesis.header), null);
@@ -262,9 +263,21 @@ pub const Chain = struct {
 
         if (try self.db.head(&batch)) |h| {
             var cur = h;
+            // below the oldest stored block there is nothing to rewind the state with
+            const tail = (try self.db.tail(&batch)) orelse Tip.fromHeader(self.genesis.header);
             while (true) {
                 const header = (try self.db.getBlockHeader(&batch, cur.last_block_h)) orelse return error.CorruptChain;
                 if (self.verifyHeadState(&batch, header)) |_| break else |e| {
+                    // stepping back can't help if the files are behind even the oldest
+                    // stored block (an empty or lost txhashset), or once we reach it
+                    const tail_header = (try self.db.getBlockHeader(&batch, tail.last_block_h)) orelse header;
+                    if (header.height <= tail.height or self.ths.sizes.output < tail_header.output_mmr_size) {
+                        std.log.warn("The chain state doesn't match the stored blocks at height {f} ({s}) and there are no older blocks to step back to. Resetting the chain state: it will be downloaded again (headers are kept).", .{ N(header.height), @errorName(e) });
+                        batch.deinit();
+                        batch = self.db.batch();
+                        try self.resetBodyState(&batch);
+                        break;
+                    }
                     // The files may not match the head after a crash: step the head back and retry.
                     std.log.warn("setup_head: {s} at {d} failed ({s}), stepping back", .{ header.hash().toHex()[0..12], header.height, @errorName(e) });
                     const prev = (try self.db.getBlockHeader(&batch, cur.prev_block_h)) orelse return error.CorruptChain;
@@ -286,6 +299,37 @@ pub const Chain = struct {
         }
         try self.db.saveSyncHead(&batch, header_head);
         try batch.commit();
+    }
+
+    /// Starts the body chain again from genesis: an empty txhashset, no stored
+    /// blocks except genesis, body head and tail at genesis. Headers are kept,
+    /// so the sync goes straight to a new state (txhashset) download.
+    fn resetBodyState(self: *Chain, batch: *kv.Batch) Error!void {
+        var doomed: std.ArrayList(Hash) = .empty;
+        defer doomed.deinit(self.gpa);
+        {
+            var it = self.db.store.iterator(&.{ chain_db.BLOCK_PREFIX, ':' });
+            defer it.deinit();
+            while (it.next()) |e| {
+                if (e.key.len != 34) continue;
+                const h = Hash{ .bytes = e.key[2..34].* };
+                if (!h.eql(self.genesis.hash())) try doomed.append(self.gpa, h);
+            }
+        }
+        for (doomed.items) |h| try self.db.deleteBlock(batch, h);
+
+        self.ths.close();
+        self.ths_dir.close(self.io);
+        try self.root.deleteTree(self.io, "txhashset");
+        self.ths_dir = try self.root.createDirPathOpen(self.io, "txhashset", .{});
+        const tip = Tip.fromHeader(self.genesis.header);
+        self.ths = try TxHashSet.open(self.gpa, self.io, self.cfg.chain, self.ths_dir, tip, null);
+        self.ths.head = tip;
+        const spent = try self.ths.applyBlock(&self.db, batch, self.genesis);
+        self.gpa.free(spent);
+        try self.ths.sync();
+        try self.db.saveBodyHead(batch, tip);
+        try self.db.saveBodyTail(batch, tip);
     }
 
     fn initGenesis(self: *Chain, batch: *kv.Batch) Error!void {
@@ -911,9 +955,11 @@ pub const Chain = struct {
 
         self.root.deleteTree(io, "tmp_txhashset") catch {};
         var sandbox = try self.root.createDirPathOpen(io, "tmp_txhashset", .{});
-        defer sandbox.close(io);
+        var sandbox_open = true;
+        defer if (sandbox_open) sandbox.close(io);
         var th_dir = try sandbox.createDirPathOpen(io, "txhashset", .{});
-        defer th_dir.close(io);
+        var th_dir_open = true;
+        defer if (th_dir_open) th_dir.close(io);
         {
             var zf = try zip_dir.openFile(io, zip_name, .{});
             defer zf.close(io);
@@ -964,20 +1010,74 @@ pub const Chain = struct {
         t.lap("output position index");
         try sths.sync();
         t.lap("sync to disk");
+        // nothing may hold the new files or folders open while they move (Windows refuses)
         sths.close();
         sths_open = false;
-        try batch.commit();
-
-        // swap the validated sandbox in for the live txhashset
-        self.ths.close();
-        self.ths_dir.close(io);
-        try self.root.deleteTree(io, "txhashset");
-        try self.root.rename("tmp_txhashset/txhashset", self.root, "txhashset", io);
-        self.ths_dir = try self.root.createDirPathOpen(io, "txhashset", .{});
-        self.ths = try TxHashSet.open(self.gpa, io, self.cfg.chain, self.ths_dir, tip, header.hash());
+        th_dir.close(io);
+        th_dir_open = false;
+        sandbox.close(io);
+        sandbox_open = false;
+        // from here the files and the database change together: a shutdown must
+        // wait for the swap instead of abandoning it half done
+        self.state_sync_active.store(false, .release);
+        try self.swapInTxhashset(&batch, tip, header.hash());
         std.log.info("Replaced txhashset with the new one; body head is now height {f}", .{N(header.height)});
     }
 
+
+    /// Replaces the live txhashset with the validated one in `tmp_txhashset/txhashset`
+    /// and commits `batch` (the new body head) only once the files are in place.
+    /// Any failure puts the old txhashset and head back, so the database and the
+    /// files never disagree; a crash part-way is tidied up by `recoverTxhashsetSwap`.
+    fn swapInTxhashset(self: *Chain, batch: *kv.Batch, tip: Tip, tip_hash: Hash) Error!void {
+        const io = self.io;
+        const old_head = try self.head();
+        self.ths.close();
+        self.ths_dir.close(io);
+        self.root.deleteTree(io, "txhashset_old") catch {};
+
+        var moved_old = false;
+        var moved_new = false;
+        const ok: Error!void = blk: {
+            self.root.rename("txhashset", self.root, "txhashset_old", io) catch |e| break :blk fsError(e);
+            moved_old = true;
+            self.root.rename("tmp_txhashset/txhashset", self.root, "txhashset", io) catch |e| break :blk fsError(e);
+            moved_new = true;
+            batch.commit() catch |e| break :blk e;
+        };
+        if (ok) |_| {} else |e| {
+            std.log.err("Couldn't swap in the new txhashset ({s}); keeping the old one", .{@errorName(e)});
+            if (moved_new) self.root.rename("txhashset", self.root, "tmp_txhashset/txhashset", io) catch {};
+            if (moved_old) self.root.rename("txhashset_old", self.root, "txhashset", io) catch {};
+            self.ths_dir = try self.root.createDirPathOpen(io, "txhashset", .{});
+            self.ths = try TxHashSet.open(self.gpa, io, self.cfg.chain, self.ths_dir, old_head, old_head.last_block_h);
+            return e;
+        }
+        self.ths_dir = try self.root.createDirPathOpen(io, "txhashset", .{});
+        self.ths = try TxHashSet.open(self.gpa, io, self.cfg.chain, self.ths_dir, tip, tip_hash);
+        self.root.deleteTree(io, "txhashset_old") catch {};
+        self.root.deleteTree(io, "tmp_txhashset") catch {};
+    }
+
+    fn fsError(e: anyerror) Error {
+        std.log.err("File operation failed: {s}", .{@errorName(e)});
+        return error.Io;
+    }
+
+    /// At startup, before the txhashset is opened: finishes tidying a swap that
+    /// was interrupted. If only the old copy exists it goes back into place; if
+    /// both exist the swap had completed and the old copy is removed.
+    fn recoverTxhashsetSwap(self: *Chain) void {
+        const io = self.io;
+        if (!fsutil.exists(io, self.root, "txhashset_old")) return;
+        if (fsutil.exists(io, self.root, "txhashset")) {
+            self.root.deleteTree(io, "txhashset_old") catch {};
+        } else {
+            std.log.warn("Restoring the txhashset from an interrupted swap", .{});
+            self.root.rename("txhashset_old", self.root, "txhashset", io) catch |e|
+                std.log.err("Couldn't restore txhashset_old: {s}", .{@errorName(e)});
+        }
+    }
 
     // ------------------------------------------------------------ serving
 
