@@ -100,6 +100,10 @@ pub fn AlgoIndex(comptime Store: type) type {
         /// Secondary scaling of the header right after each algorithm's newest
         /// entry (null while that entry is still the tip).
         succ_scaling: [4]?u32 = .{ null, null, null, null },
+        /// Which algorithms' entries have been built for this tip. Each is built
+        /// on first use: an algorithm that hasn't been mined for a long time
+        /// would otherwise mean walking back through much of the chain.
+        built: [4]bool = .{ false, false, false, false },
         /// The tip this index describes.
         tip: ?Hash = null,
         tip_header: ?BlockHeader = null,
@@ -119,31 +123,39 @@ pub fn AlgoIndex(comptime Store: type) type {
             self.len[a] = n;
         }
 
-        /// Rebuilds for the chain ending at `tip` using the slow iterator.
+        /// Resets the index to describe the chain ending at `tip`; each
+        /// algorithm's entries are filled in when first needed (`cursor`).
         pub fn build(self: *Self, store: *const Store, tip: BlockHeader) void {
+            _ = store;
             self.invalidate();
             self.len = .{ 0, 0, 0, 0 };
             self.succ_scaling = .{ null, null, null, null };
-            for (PoWType.all) |algo| {
-                const a = algo.idx();
-                // newest header of this algorithm at or before the tip, and its successor
-                var cur = tip;
-                var after: ?BlockHeader = null;
-                while (cur.pow.proof.powType() != algo) {
-                    after = cur;
-                    cur = store.get(cur.prev_hash) orelse break;
-                }
-                if (cur.pow.proof.powType() != algo) continue;
-                self.succ_scaling[a] = if (after) |h| h.pow.secondary_scaling else null;
-                var it = DifficultyIter(Store).init(store, cur.hash());
-                var tmp: [K]HeaderInfo = undefined;
-                const got = it.take(&tmp);
-                // `got` is newest first
-                for (got, 0..) |e, j| self.infos[a][j] = e;
-                self.len[a] = got.len;
-            }
+            self.built = .{ false, false, false, false };
             self.tip = tip.hash();
             self.tip_header = tip;
+        }
+
+        /// Fills in one algorithm's entries for the current tip with the slow iterator.
+        fn buildAlgo(self: *Self, store: *const Store, algo: PoWType) void {
+            const a = algo.idx();
+            self.built[a] = true;
+            self.len[a] = 0;
+            self.succ_scaling[a] = null;
+            // newest header of this algorithm at or before the tip, and its successor
+            var cur = self.tip_header.?;
+            var after: ?BlockHeader = null;
+            while (cur.pow.proof.powType() != algo) {
+                after = cur;
+                cur = store.get(cur.prev_hash) orelse break;
+            }
+            if (cur.pow.proof.powType() != algo) return;
+            self.succ_scaling[a] = if (after) |h| h.pow.secondary_scaling else null;
+            var it = DifficultyIter(Store).init(store, cur.hash());
+            var tmp: [K]HeaderInfo = undefined;
+            const got = it.take(&tmp);
+            // `got` is newest first
+            for (got, 0..) |e, j| self.infos[a][j] = e;
+            self.len[a] = got.len;
         }
 
         pub fn isAt(self: *const Self, tip: Hash) bool {
@@ -152,8 +164,10 @@ pub fn AlgoIndex(comptime Store: type) type {
 
         /// Newest-first entries for the algorithm of the tip header (what
         /// `DifficultyIter(tip)` yields). Valid only when `isAt(tip)`.
-        pub fn cursor(self: *const Self, out: []HeaderInfo) []HeaderInfo {
-            const a = self.tip_header.?.pow.proof.powType().idx();
+        pub fn cursor(self: *Self, store: *const Store, out: []HeaderInfo) []HeaderInfo {
+            const algo = self.tip_header.?.pow.proof.powType();
+            if (!self.built[algo.idx()]) self.buildAlgo(store, algo);
+            const a = algo.idx();
             const n = @min(self.len[a], out.len);
             @memcpy(out[0..n], self.infos[a][0..n]);
             return out[0..n];
@@ -165,10 +179,16 @@ pub fn AlgoIndex(comptime Store: type) type {
             const pt = self.tip_header orelse return;
             if (!y.prev_hash.eql(self.tip.?)) return self.invalidate();
             const ap = pt.pow.proof.powType().idx();
-            if (self.len[ap] > 0 and self.infos[ap][0].block_hash.eql(pt.hash()) and self.succ_scaling[ap] == null)
+            if (self.built[ap] and self.len[ap] > 0 and self.infos[ap][0].block_hash.eql(pt.hash()) and self.succ_scaling[ap] == null)
                 self.succ_scaling[ap] = y.pow.secondary_scaling;
 
             const a = y.pow.proof.powType().idx();
+            if (!self.built[a]) {
+                // nothing to keep up to date yet: it is built from the tip when needed
+                self.tip = y.hash();
+                self.tip_header = y;
+                return;
+            }
             if (self.len[a] == 0) return self.invalidate();
             const scaling = self.succ_scaling[a] orelse return self.invalidate();
             self.pushFront(a, .{
@@ -378,7 +398,7 @@ test "real windows: the algorithm index yields exactly what the slow iterator yi
             var a: [Index.K]HeaderInfo = undefined;
             var b: [Index.K]HeaderInfo = undefined;
             const slow = slow_it.take(&a);
-            const fast = idx.cursor(&b);
+            const fast = idx.cursor(&store, &b);
             checked += 1;
             var same = slow.len == fast.len;
             if (same) for (slow, fast) |x, y| {

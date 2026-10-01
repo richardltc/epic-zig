@@ -472,7 +472,7 @@ pub const Chain = struct {
             const src = HeaderSource{ .db = &self.db, .batch = batch, .cache = &self.header_cache, .gpa = self.gpa };
             if (!self.algo_index.isAt(prev.hash())) self.algo_index.build(&src, prev);
             var buf: [consensus.MAX_DIFF_DATA]consensus.HeaderInfo = undefined;
-            const cursor = self.algo_index.cursor(&buf);
+            const cursor = self.algo_index.cursor(&src, &buf);
             const info = consensus.nextDifficultyFor(chain, header.height, prev.pow.proof.powType(), cursor);
             if (!target.eql(info.difficulty)) return error.WrongTotalDifficulty;
             if (header.pow.proof == .cuckoo and header.pow.secondary_scaling != info.secondary_scaling) return error.InvalidScaling;
