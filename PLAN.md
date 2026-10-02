@@ -195,5 +195,6 @@ gave 1,100-1,850/s early and ~9,500/s later from the same peer. DNS seed + the s
 ## Log file
 - `[logging]` with the reference's keys (`log_to_stdout`, `stdout_log_level`, `log_to_file`, `file_log_level`, `log_file_path`, `log_file_append`, `log_max_size`, `log_max_files`). Defaults as the reference's except `log_to_file = true` (early testing: users can send the file): `<data-dir>/epic-zig.log` at Debug, rotated at 16 MB into `.0.gz` ... `.31.gz`.
 - Crashes: a panic handler writes the message to the log file before Zig's default report; an error returned from main is logged too.
+- Txhashset validation logs its progress every 10 s (kernel signatures / range proofs from `txhashset.progress`, kernel history from a counter in `validateKernelHistory`), after a tester saw ~5 minutes with no output.
 - SIGHUP (terminal closed, SSH dropped) now shuts down cleanly like SIGINT/SIGTERM, as the reference's `ctrlc` "termination" handler does; on Windows a closed console window / logoff / shutdown waits in the handler while the node shuts down (Windows ends the process when the handler returns).
 - `zig build run` exits as soon as Ctrl-C arrives, before the node finishes shutting down, so the node's last lines print after the shell prompt; run the binary directly to see the prompt after "Shutdown complete".

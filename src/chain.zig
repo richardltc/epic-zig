@@ -709,7 +709,11 @@ pub const Chain = struct {
     /// Every header's kernel root must match the kernel MMR at that header's size.
     /// When `header` is on our header chain the heights are checked in parallel
     /// chunks; otherwise by walking back from it.
+    /// Headers checked so far by `validateKernelHistory`, for progress lines.
+    var kernel_history_done: std.atomic.Value(u64) = .init(0);
+
     pub fn validateKernelHistory(self: *Chain, ths: *TxHashSet, header: BlockHeader) Error!void {
+        kernel_history_done.store(0, .monotonic);
         const on_main = if (self.header_mmr.hashAtHeight(header.height)) |hh| hh.eql(header.hash()) else false;
         if (!on_main) {
             var batch = self.db.batch();
@@ -738,11 +742,42 @@ pub const Chain = struct {
                     const root = try c.ths.kernelRootCached(hdr.kernel_mmr_size, &cache);
                     if (!root.eql(hdr.kernel_root)) return error.InvalidRoot;
                 }
+                _ = kernel_history_done.fetchAdd(last - first + 1, .monotonic);
             }
         };
         var ctx: Ctx = .{ .chain = self, .ths = ths, .top = header.height };
         @import("parallel.zig").forEach(Ctx, &ctx, @intCast((header.height + CHUNK - 1) / CHUNK), Ctx.work) catch |e| return @errorCast(e);
     }
+
+    /// Logs the progress of a txhashset validation every 10 seconds until stopped.
+    const ValidationReporter = struct {
+        io: Io,
+        history_total: u64,
+        stop: std.atomic.Value(bool) = .init(false),
+
+        fn pct(done: u64, total: u64) u64 {
+            return if (total == 0) 100 else @min(100, done * 100 / total);
+        }
+
+        fn run(r: *ValidationReporter) void {
+            var ticks: u32 = 0;
+            while (!r.stop.load(.acquire)) : (ticks += 1) {
+                r.io.sleep(.fromMilliseconds(250), .awake) catch {};
+                if (ticks == 0 or ticks % 40 != 0) continue;
+                const p = &txhashset_mod.progress;
+                const done = p.done.load(.monotonic);
+                const total = p.total.load(.monotonic);
+                const hist = kernel_history_done.load(.monotonic);
+                var b: [96]u8 = undefined;
+                const set_part: []const u8 = switch (p.stage.load(.acquire)) {
+                    txhashset_mod.Progress.KERNELS => std.fmt.bufPrint(&b, "kernel signatures {f} / {f} ({d}%)", .{ N(done), N(total), pct(done, total) }) catch "kernel signatures",
+                    txhashset_mod.Progress.RANGEPROOFS => std.fmt.bufPrint(&b, "range proofs {f} / {f} ({d}%)", .{ N(done), N(total), pct(done, total) }) catch "range proofs",
+                    else => "MMR hashes, roots and sums",
+                };
+                std.log.info("Validating txhashset: {s}; kernel history {f} / {f} ({d}%)", .{ set_part, N(hist), N(r.history_total), pct(hist, r.history_total) });
+            }
+        }
+    };
 
     /// Rebuilds the commitment -> (position, height) index from the unspent set.
     /// Needs every header up to `head_height` in the database.
@@ -992,8 +1027,13 @@ pub const Chain = struct {
         const hist_thread = std.Thread.spawn(.{}, Hist.run, .{&hist}) catch null;
         if (hist_thread == null) Hist.run(&hist);
         const t_val = Io.Clock.awake.now(io).toMilliseconds();
+        // a few minutes of work: say how far it has got every 10 seconds
+        var reporter: ValidationReporter = .{ .io = io, .history_total = header.height };
+        const rep_thread = std.Thread.spawn(.{}, ValidationReporter.run, .{&reporter}) catch null;
         const validated = sths.validate(self.genesis.header, false, header);
         if (hist_thread) |th| th.join();
+        reporter.stop.store(true, .release);
+        if (rep_thread) |th| th.join();
         std.log.info("Finished validating txhashset and kernel history in {d:.1}s. Going to replace...", .{@as(f64, @floatFromInt(Io.Clock.awake.now(io).toMilliseconds() - t_val)) / 1000.0});
         try hist.result;
         const sums = try validated;
