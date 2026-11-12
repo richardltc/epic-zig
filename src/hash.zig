@@ -10,7 +10,7 @@ pub const Hash = struct {
     bytes: [32]u8,
 
     pub const LEN = 32;
-    pub const zero: Hash = .{ .bytes = [_]u8{0} ** 32 };
+    pub const zero: Hash = .{ .bytes = @as([32]u8, @splat(0)) };
 
     /// Pads with zeroes if short, truncates if long.
     pub fn fromVec(v: []const u8) Hash {

@@ -320,13 +320,13 @@ test "rfc3339 and big decimal" {
     try rfc3339(&w, 1547577060);
     try testing.expectEqualStrings("\"2019-01-15T18:31:00+00:00\"", w.buffered());
     var w2 = Writer.fixed(&buf);
-    var be = [_]u8{0} ** 32;
+    var be = @as([32]u8, @splat(0));
     be[31] = 0xff;
     be[30] = 0x01; // 511
     try bigDecimal(&w2, &be);
     try testing.expectEqualStrings("511", w2.buffered());
     var w3 = Writer.fixed(&buf);
-    be = [_]u8{0xff} ** 32; // 2^256 - 1
+    be = @as([32]u8, @splat(0xff)); // 2^256 - 1
     try bigDecimal(&w3, &be);
     try testing.expectEqualStrings("115792089237316195423570985008687907853269984665640564039457584007913129639935", w3.buffered());
 }

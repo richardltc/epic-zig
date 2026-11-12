@@ -6,7 +6,7 @@ const std = @import("std");
 const Io = std.Io;
 const ser = @import("ser.zig");
 
-const rdb = @cImport(@cInclude("rocksdb/c.h"));
+const rdb = @import("rocksdb_c");
 
 pub const Error = error{
     DbError,
@@ -70,7 +70,7 @@ pub const Store = struct {
         self.wopts = rdb.rocksdb_writeoptions_create().?;
         rdb.rocksdb_writeoptions_set_sync(self.wopts, @intFromBool(options.sync_writes));
 
-        const path_z = try gpa.dupeZ(u8, path);
+        const path_z = try gpa.dupeSentinel(u8, path, 0);
         defer gpa.free(path_z);
         var err: [*c]u8 = null;
         self.db = rdb.rocksdb_open(self.opts, path_z.ptr, &err) orelse {

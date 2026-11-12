@@ -174,7 +174,7 @@ test "measure: algorithm mix near the tip" {
     for (fx.windows.items) |w| {
         if (best == null or w[0].height > best.?[0].height) best = w;
     }
-    var counts = [_]usize{0} ** 4;
+    var counts = @as([4]usize, @splat(0));
     for (best.?) |h| counts[h.pow.proof.powType().idx()] += 1;
     std.debug.print("  window at {d}: cuckaroo {d}, cuckatoo {d}, randomx {d}, progpow {d}\n", .{ best.?[0].height, counts[0], counts[1], counts[2], counts[3] });
     for (best.?[0..60]) |h| std.debug.print("{s}", .{@tagName(h.pow.proof.powType())[0..2]});

@@ -169,14 +169,51 @@ pub const Api = struct {
         return false;
     }
 
+    fn unauthorized(req: *http.Server.Request, foreign: bool) !void {
+        return req.respond("Unauthorized", .{
+            .status = .unauthorized,
+            .extra_headers = &.{.{ .name = "www-authenticate", .value = if (foreign) "Basic realm=\"EpicForeignAPI\"" else "Basic realm=\"EpicAPI\"" }},
+        });
+    }
+
+    /// `is_legacy_status_request`: exactly one JSON-RPC 2.0 `get_status` call with
+    /// null/empty params and no extra keys (old GUIs poll it without credentials).
+    fn isLegacyStatusRequest(gpa: std.mem.Allocator, body: []const u8) bool {
+        var parsed = std.json.parseFromSlice(std.json.Value, gpa, body, .{}) catch return false;
+        defer parsed.deinit();
+        if (parsed.value != .object) return false;
+        const o = parsed.value.object;
+        const jr = o.get("jsonrpc") orelse return false;
+        const m = o.get("method") orelse return false;
+        if (jr != .string or !std.mem.eql(u8, jr.string, "2.0")) return false;
+        if (m != .string or !std.mem.eql(u8, m.string, "get_status")) return false;
+        const id = o.get("id") orelse return false;
+        switch (id) {
+            .integer, .float, .number_string, .string, .null => {},
+            else => return false,
+        }
+        var it = o.iterator();
+        while (it.next()) |e| {
+            const k = e.key_ptr.*;
+            if (!(std.mem.eql(u8, k, "jsonrpc") or std.mem.eql(u8, k, "method") or std.mem.eql(u8, k, "params") or std.mem.eql(u8, k, "id"))) return false;
+        }
+        const params = o.get("params") orelse return false;
+        return switch (params) {
+            .null => true,
+            .array => |a| a.items.len == 0,
+            else => false,
+        };
+    }
+
     fn handleRequest(self: *Api, req: *http.Server.Request) !void {
         const foreign = std.mem.startsWith(u8, req.head.target, "/v2/foreign");
-        if (!authorized(req, if (foreign) self.foreign_token else self.auth_token)) {
-            return req.respond("Unauthorized", .{
-                .status = .unauthorized,
-                .extra_headers = &.{.{ .name = "www-authenticate", .value = if (foreign) "Basic realm=\"EpicForeignAPI\"" else "Basic realm=\"EpicAPI\"" }},
-            });
-        }
+        const auth_ok = authorized(req, if (foreign) self.foreign_token else self.auth_token);
+        // 4.1.x: GET /v1/version and /v1/status stay public, and an unauthenticated
+        // POST /v2/owner may still send a lone `get_status` (checked once the body is read)
+        const path_only = req.head.target[0 .. std.mem.indexOfScalar(u8, req.head.target, '?') orelse req.head.target.len];
+        const public_get = req.head.method == .GET and (std.mem.eql(u8, path_only, "/v1/version") or std.mem.eql(u8, path_only, "/v1/status"));
+        const legacy_owner = req.head.method == .POST and std.mem.eql(u8, path_only, "/v2/owner");
+        if (!auth_ok and !public_get and !legacy_owner) return unauthorized(req, foreign);
         const method = req.head.method;
         // a POST without Content-Length or chunking has no body (RFC 7230);
         // std.http would otherwise wait for one until the client hangs up
@@ -197,6 +234,8 @@ pub const Api = struct {
                 body = reader.readAlloc(self.gpa, @intCast(len)) catch return req.respond("bad body", .{ .status = .bad_request });
             }
         }
+
+        if (!auth_ok and legacy_owner and !isLegacyStatusRequest(self.gpa, body)) return unauthorized(req, foreign);
 
         const reply = self.route(method, target, body) catch |e| {
             const code: http.Status = switch (e) {
@@ -392,7 +431,9 @@ pub const Api = struct {
     /// false if the method is unknown.
     fn foreignMethod(self: *Api, w: *Writer, name: []const u8, params: std.json.Value) ApiError!bool {
         const eq = std.mem.eql;
-        if (eq(u8, name, "get_version")) {
+        if (eq(u8, name, "ready_for_txs")) {
+            try w.print("{{\"ready_for_txs\":{}}}", .{self.node.syncStatus() == .no_sync});
+        } else if (eq(u8, name, "get_version")) {
             try w.print("{{\"node_version\":\"{s}\",\"block_header_version\":{d}}}", .{ NODE_VERSION, self.headerVersionNext() });
         } else if (eq(u8, name, "get_tip")) {
             try json.tip(w, self.chain.head() catch return error.Internal);

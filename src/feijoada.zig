@@ -64,11 +64,28 @@ pub fn nextBlockBottles(pow: PoWType, bottles: Policy) Policy {
     return nb;
 }
 
+/// `validate_bottles` (4.1.x): every scheduled algorithm must have a bottle,
+/// at least one must be scheduled, and the beans must not exceed 100.
+pub fn validateBottles(policy: Policy, bottles: Policy) error{MissingBottle}!void {
+    var scheduled = false;
+    for (PoWType.all) |algo| {
+        if ((policy.get(algo) orelse 0) > 0) {
+            scheduled = true;
+            if (bottles.get(algo) == null) return error.MissingBottle;
+        }
+    }
+    if (!scheduled) return error.MissingBottle;
+    var sum: u64 = 0;
+    for (bottles.v) |x| sum += x orelse 0;
+    if (sum > 100) return error.MissingBottle;
+}
+
 /// Picks the algorithm whose share is furthest below its policy proportion.
 /// Uses f32 exactly like the reference (bit-for-bit compatible) and, like
 /// Rust's `max_by`, prefers the *last* of equally-scored algorithms.
 /// Errors where the reference would panic (policy names an algo missing from bottles).
 pub fn chooseAlgo(policy: Policy, bottles: Policy) error{MissingBottle}!PoWType {
+    try validateBottles(policy, bottles);
     const total: f32 = @floatFromInt(countBeans(bottles));
     var best: ?PoWType = null;
     var best_score: f32 = 0;
@@ -141,4 +158,13 @@ test "policy serialization" {
     try std.testing.expectEqual(@as(usize, 8 + 4 * 5), bytes.len);
     var r = ser.Reader.init(gpa, bytes, ser.ProtocolVersion.local());
     try std.testing.expect((try Policy.read(&r)).eql(p));
+}
+
+test "validateBottles rejects missing, unscheduled and oversized bottles" {
+    const pol = Policy.init(0, 0, 60, 40);
+    try validateBottles(pol, Policy.default_bottles);
+    try validateBottles(pol, Policy.init(0, 0, 50, 50));
+    try std.testing.expectError(error.MissingBottle, validateBottles(pol, Policy.init(0, 0, 50, 51)));
+    try std.testing.expectError(error.MissingBottle, validateBottles(pol, .{ .v = .{ 0, 0, 5, null } }));
+    try std.testing.expectError(error.MissingBottle, validateBottles(Policy.init(0, 0, 0, 0), Policy.default_bottles));
 }

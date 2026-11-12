@@ -47,6 +47,8 @@ pub const ours = [_]Checkpoint{
 pub const extended = [_]Checkpoint{
     .{ .height = 3600000, .hash = h("e7e466efafb6ab13c909d2204a60c7507a3254611b5fdf2641f78736d7addc9d") },
     .{ .height = 3700000, .hash = h("0d6f6213adbd81e050c52792c7956aef12d40b64d2514e4bc5a4a0d4aae5c978") },
+    // the Rust node's 4.1.0 table
+    .{ .height = 3710000, .hash = h("88e8166f7ec4b9564dd602bd169ab187e72c9c9a39136c8537c784593c7a9cfb") },
 };
 
 pub const CheckpointError = error{CheckpointFailure};
@@ -87,6 +89,7 @@ test "checkpoint table" {
     try std.testing.expect(!(try check(3_600_000, Hash.zero, false)));
     try std.testing.expectError(error.CheckpointFailure, check(3_600_000, Hash.zero, true));
     try std.testing.expect(try check(3_650_000, Hash.zero, true));
-    try std.testing.expect(try check(3_700_000, extended[extended.len - 1].hash, true));
+    try std.testing.expect(try check(3_700_000, extended[extended.len - 2].hash, true));
+    try std.testing.expect(try check(3_710_000, extended[extended.len - 1].hash, true));
     try std.testing.expect(!(try check(3_750_000, Hash.zero, true)));
 }

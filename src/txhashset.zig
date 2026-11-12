@@ -47,7 +47,7 @@ pub const Error = error{
 
 /// 1024 bits (128 bytes) of the unspent-output bitmap; hashed as a PMMR leaf.
 pub const BitmapChunk = struct {
-    bytes: [128]u8 = [_]u8{0} ** 128,
+    bytes: [128]u8 = @as([128]u8, @splat(0)),
 
     pub const LEN_BITS = 1024;
 
@@ -1019,7 +1019,7 @@ test "bitmap chunk bit order is MSB first" {
 }
 
 fn fakeOutput(n: u8) Output {
-    var c: Commitment = .{ .bytes = [_]u8{0} ** 33 };
+    var c: Commitment = .{ .bytes = @as([33]u8, @splat(0)) };
     c.bytes[0] = 8;
     c.bytes[1] = n;
     var p = RangeProof.zero;
@@ -1046,12 +1046,12 @@ fn fakeBlock(gpa: std.mem.Allocator, height: u64, prev: ?BlockHeader, outs: []co
     for (spends, 0..) |n, i| ins[i] = .{ .features = .plain, .commit = fakeOutput(n).commit };
     const ks = try gpa.alloc(TxKernel, 1);
     // a properly signed kernel (the kernel PMMR's version detection verifies the first one)
-    var key = [_]u8{0} ** 32;
+    var key = @as([32]u8, @splat(0));
     key[31] = @intCast(height + 1);
     ks[0] = TxKernel.withFeatures(.{ .plain = .{ .fee = height } });
     ks[0].excess = try Commitment.commit(0, &key);
     const msg = ks[0].msgToSign();
-    ks[0].excess_sig = crypto.signKernel(&key, &msg, &([_]u8{7} ** 32)).?;
+    ks[0].excess_sig = crypto.signKernel(&key, &msg, &(@as([32]u8, @splat(7)))).?;
     try tx.sortByHash(tx.Input, gpa, ins);
     try tx.sortByHash(Output, gpa, os);
     return .{ .header = h, .body = .{ .inputs = ins, .outputs = os, .kernels = ks } };

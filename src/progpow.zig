@@ -80,7 +80,7 @@ pub fn getDataSize(block_number: u64) usize {
 
 /// Seed hash of an epoch: keccak-256 iterated `epoch` times from zero.
 pub fn seedHash(epoch: u64) [32]u8 {
-    var h = [_]u8{0} ** 32;
+    var h = @as([32]u8, @splat(0));
     var i: u64 = 0;
     while (i < epoch) : (i += 1) Keccak256.hash(&h, &h, .{});
     return h;
@@ -196,13 +196,13 @@ fn keccakF800(header_hash: [32]u8, nonce: u64, result: [8]u32, st: *[25]u32) voi
 }
 
 fn keccakF800Short(header_hash: [32]u8, nonce: u64, result: [8]u32) u64 {
-    var st = [_]u32{0} ** 25;
+    var st = @as([25]u32, @splat(0));
     keccakF800(header_hash, nonce, result, &st);
     return (@as(u64, @byteSwap(st[0])) << 32) | @as(u64, @byteSwap(st[1]));
 }
 
 fn keccakF800Long(header_hash: [32]u8, nonce: u64, result: [8]u32) [8]u32 {
-    var st = [_]u32{0} ** 25;
+    var st = @as([25]u32, @splat(0));
     keccakF800(header_hash, nonce, result, &st);
     return st[0..8].*;
 }
@@ -367,7 +367,7 @@ pub const Result = struct {
 pub fn progpow(header_hash: [32]u8, nonce: u64, block_number: u64, cache: []const Node, c_dag: *const CDag) Result {
     var mix: [PROGPOW_LANES][PROGPOW_REGS]u32 = undefined;
     var lane_results: [PROGPOW_LANES]u32 = undefined;
-    var result = [_]u32{0} ** 8;
+    var result = @as([8]u32, @splat(0));
 
     const data_size = getDataSize(block_number) / PROGPOW_MIX_BYTES;
     std.debug.assert(data_size > 0);
@@ -382,7 +382,7 @@ pub fn progpow(header_hash: [32]u8, nonce: u64, block_number: u64, cache: []cons
         lane_results[l] = FNV_HASH;
         for (0..PROGPOW_REGS) |i| lane_results[l] = fnv1aHash(lane_results[l], mix[l][i]);
     }
-    result = [_]u32{FNV_HASH} ** 8;
+    result = @as([8]u32, @splat(FNV_HASH));
     for (0..PROGPOW_LANES) |l| result[l % 8] = fnv1aHash(result[l % 8], lane_results[l]);
 
     const digest = keccakF800Long(header_hash, seed, result);
@@ -484,7 +484,7 @@ test "cache and data sizes match the reference" {
 }
 
 test "seed hash" {
-    try testing.expectEqual([_]u8{0} ** 32, seedHash(0));
+    try testing.expectEqual(@as([32]u8, @splat(0)), seedHash(0));
     const want = [_]u8{
         241, 175, 44,  134, 39,  121, 245, 239, 228, 236, 43,  160, 195, 152, 46,  7,
         199, 5,   253, 147, 241, 206, 98,  43,  3,   104, 17,  40,  192, 79,  106, 162,
@@ -505,8 +505,8 @@ test "merge, math and keccak-f800 primitives" {
     };
     for (maths, 0..) |t, i| try testing.expectEqual(t[2], math(t[0], t[1], @intCast(i)));
 
-    try testing.expectEqual(@as(u64, 0x5dd431e5fbc604f4), keccakF800Short([_]u8{0} ** 32, 0, [_]u32{0} ** 8));
-    const long = keccakF800Long([_]u8{0} ** 32, 0, [_]u32{0} ** 8);
+    try testing.expectEqual(@as(u64, 0x5dd431e5fbc604f4), keccakF800Short(@as([32]u8, @splat(0)), 0, @as([8]u32, @splat(0))));
+    const long = keccakF800Long(@as([32]u8, @splat(0)), 0, @as([8]u32, @splat(0)));
     var hex: [64]u8 = undefined;
     _ = try std.fmt.bufPrint(&hex, "{x}", .{std.mem.asBytes(&long)});
     try testing.expectEqualStrings("5dd431e5fbc604f499bfa0232f45f8f142d0ff5178f539e5a7800bf0643697af", &hex);
@@ -523,7 +523,7 @@ test "cdag and hash for epoch 0" {
     };
     try testing.expectEqualSlices(u32, &expected, cdag[0..20]);
 
-    const r = progpow([_]u8{0} ** 32, 0, 0, cache, &cdag);
+    const r = progpow(@as([32]u8, @splat(0)), 0, 0, cache, &cdag);
     var hex: [64]u8 = undefined;
     _ = try std.fmt.bufPrint(&hex, "{x}", .{&r.digestBytes()});
     try testing.expectEqualStrings("63155f732f2bf556967f906155b510c917e48e99685ead76ea83f4eca03ab12b", &hex);
@@ -537,7 +537,7 @@ test "reference test vectors and the node's height-20 mix vector" {
     defer mgr.deinit();
 
     // node crate: header 0, height 20, nonce 10123012301
-    const r20 = try mgr.compute([_]u8{0} ** 32, 20, 10123012301);
+    const r20 = try mgr.compute(@as([32]u8, @splat(0)), 20, 10123012301);
     try testing.expectEqualSlices(u32, &.{ 1067276040, 109748694, 1270962088, 3616890847, 2528371908, 2524623649, 1191460869, 2529877558 }, &r20.mix);
 
     const json = @embedFile("data/progpow_testvectors.json");

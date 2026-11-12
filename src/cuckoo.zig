@@ -96,14 +96,14 @@ const V1_31 = [42]u64{
 
 test "cuckatoo 29 and 31 reference solutions verify" {
     const gpa = std.testing.allocator;
-    const header = [_]u8{0} ** 80;
+    const header = @as([80]u8, @splat(0));
     try verify(try siphashKeys(gpa, &header, 20), 29, &V1_29);
     try verify(try siphashKeys(gpa, &header, 99), 31, &V1_31);
 }
 
 test "cuckatoo rejects tampering" {
     const gpa = std.testing.allocator;
-    var header = [_]u8{0} ** 80;
+    var header = @as([80]u8, @splat(0));
     header[0] = 1;
     try std.testing.expectError(error.EndpointsDontMatch, verify(try siphashKeys(gpa, &header, 20), 29, &V1_29));
     header[0] = 0;

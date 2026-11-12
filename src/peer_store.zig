@@ -20,7 +20,7 @@ pub const Key = struct {
     port: u16,
 
     pub fn fromAddr(a: net.IpAddress) Key {
-        var k: Key = .{ .v6 = false, .ip = [_]u8{0} ** 16, .port = 0 };
+        var k: Key = .{ .v6 = false, .ip = @as([16]u8, @splat(0)), .port = 0 };
         switch (a) {
             .ip4 => |x| {
                 @memcpy(k.ip[0..4], &x.bytes);
@@ -82,7 +82,7 @@ pub fn acceptable(a: net.IpAddress, allow_local: bool) bool {
             if (std.mem.allEqual(u8, &x.bytes, 0)) return false;
             if (x.bytes[0] == 0xff) return false; // multicast
             if (allow_local) return true;
-            const loopback = std.mem.eql(u8, x.bytes[0..15], &([_]u8{0} ** 15)) and x.bytes[15] == 1;
+            const loopback = std.mem.eql(u8, x.bytes[0..15], &(@as([15]u8, @splat(0)))) and x.bytes[15] == 1;
             if (loopback) return false;
             if ((x.bytes[0] & 0xfe) == 0xfc) return false; // unique local
             if (x.bytes[0] == 0xfe and (x.bytes[1] & 0xc0) == 0x80) return false; // link local

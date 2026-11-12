@@ -5,14 +5,7 @@ const std = @import("std");
 const ser = @import("ser.zig");
 const hash_mod = @import("hash.zig");
 
-pub const c = @cImport({
-    @cInclude("secp256k1.h");
-    @cInclude("secp256k1_generator.h");
-    @cInclude("secp256k1_commitment.h");
-    @cInclude("secp256k1_bulletproofs.h");
-    @cInclude("secp256k1_aggsig.h");
-    @cInclude("secp256k1_schnorrsig.h");
-});
+pub const c = @import("secp_c");
 
 pub const PEDERSEN_COMMITMENT_SIZE = 33;
 pub const SECRET_KEY_SIZE = 32;
@@ -89,7 +82,7 @@ pub const Commitment = struct {
 
     /// Not a real commitment: 33 zero bytes (`commit_to_zero_value`), used as a
     /// sentinel that is dropped when summing.
-    pub const zero: Commitment = .{ .bytes = [_]u8{0} ** PEDERSEN_COMMITMENT_SIZE };
+    pub const zero: Commitment = .{ .bytes = @as([PEDERSEN_COMMITMENT_SIZE]u8, @splat(0)) };
 
     pub fn eql(a: Commitment, b: Commitment) bool {
         return std.mem.eql(u8, &a.bytes, &b.bytes);
@@ -125,7 +118,7 @@ pub const Commitment = struct {
 
     /// Commitment with a zero blinding factor.
     pub fn commitValue(value: u64) Error!Commitment {
-        return commit(value, &([_]u8{0} ** 32));
+        return commit(value, &(@as([32]u8, @splat(0))));
     }
 
     pub fn toPubkey(self: Commitment) Error!PublicKey {
@@ -228,7 +221,7 @@ pub const PublicKey = struct {
 pub const Signature = struct {
     bytes: [AGG_SIGNATURE_SIZE]u8,
 
-    pub const zero: Signature = .{ .bytes = [_]u8{0} ** AGG_SIGNATURE_SIZE };
+    pub const zero: Signature = .{ .bytes = @as([AGG_SIGNATURE_SIZE]u8, @splat(0)) };
 
     pub fn eql(a: Signature, b: Signature) bool {
         return std.mem.eql(u8, &a.bytes, &b.bytes);
@@ -249,7 +242,7 @@ pub const RangeProof = struct {
     proof: [MAX_PROOF_SIZE]u8,
     plen: usize,
 
-    pub const zero: RangeProof = .{ .proof = [_]u8{0} ** MAX_PROOF_SIZE, .plen = 0 };
+    pub const zero: RangeProof = .{ .proof = @as([MAX_PROOF_SIZE]u8, @splat(0)), .plen = 0 };
 
     pub fn eql(a: RangeProof, b: RangeProof) bool {
         return std.mem.eql(u8, &a.proof, &b.proof);
@@ -370,14 +363,14 @@ test "commit(0, 1) is G-multiple; two_g vector from the reference crate" {
 
 test "commitment sums and tallies" {
     const gpa = std.testing.allocator;
-    var k1 = [_]u8{0} ** 32;
+    var k1 = @as([32]u8, @splat(0));
     k1[31] = 5;
-    var k2 = [_]u8{0} ** 32;
+    var k2 = @as([32]u8, @splat(0));
     k2[31] = 7;
     const a = try Commitment.commit(10, &k1);
     const b = try Commitment.commit(20, &k2);
     const sum = try commitSum(gpa, &.{ a, b }, &.{});
-    var k3 = [_]u8{0} ** 32;
+    var k3 = @as([32]u8, @splat(0));
     k3[31] = 12;
     const expect = try Commitment.commit(30, &k3);
     try std.testing.expect(sum.eql(expect));

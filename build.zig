@@ -3,12 +3,12 @@ const std = @import("std");
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     // `zig build --release` means ReleaseSafe: runtime safety checks stay on in our code.
-    const optimize = b.standardOptimizeOption(.{ .preferred_optimize_mode = .ReleaseSafe });
+    const optimize = b.standardOptimizeOption(.{ .preferred_optimize_mode = .safe });
     // Release builds drop debug info (much smaller binaries); `-Dstrip=false` keeps it.
-    const strip = b.option(bool, "strip", "Strip debug info (default: on for release builds)") orelse (optimize != .Debug);
+    const strip = b.option(bool, "strip", "Strip debug info (default: on for release builds)") orelse (optimize != .debug);
     // The vendored C/C++ libraries are built fully optimised in any release mode:
     // ReleaseSafe's runtime checks only apply to Zig code anyway.
-    const c_optimize: std.builtin.OptimizeMode = if (optimize == .Debug) .Debug else .ReleaseFast;
+    const c_optimize: std.builtin.Optimize = if (optimize == .debug) .debug else .fast;
 
     const secp_dir = "vendor/rust-secp256k1-zkp/depend/secp256k1-zkp";
 
@@ -71,6 +71,31 @@ pub fn build(b: *std.Build) void {
     test_mod.linkLibrary(roaring);
     test_mod.linkLibrary(randomx);
     test_mod.linkLibrary(rocksdb);
+
+    // C headers are translated by build steps (`@cImport` is gone in Zig 0.17).
+    const c_headers = [_]struct { name: []const u8, header: []const u8 }{
+        .{ .name = "secp_c", .header = "src/c/c_secp.h" },
+        .{ .name = "roaring_c", .header = "src/c/c_roaring.h" },
+        .{ .name = "randomx_c", .header = "src/c/c_randomx.h" },
+        .{ .name = "rocksdb_c", .header = "src/c/c_rocksdb.h" },
+    };
+    for (c_headers) |ch| {
+        const tc = b.addTranslateC(.{
+            .root_source_file = b.path(ch.header),
+            .target = target,
+            .optimize = optimize,
+        });
+        tc.addIncludePath(b.path(secp_dir ++ "/include"));
+        tc.addIncludePath(b.path("vendor/CRoaring/include"));
+        tc.addIncludePath(b.path("vendor/randomx-rust/randomx/src"));
+        tc.addIncludePath(b.path("vendor/rocksdb/include"));
+        tc.defineCMacro("CROARING_COMPILER_SUPPORTS_AVX512", "0");
+        // translate-c can't parse <stdatomic.h>; refcounts are internal to the library only.
+        tc.defineCMacro("CROARING_ATOMIC_IMPL", "1");
+        // MinGW's fortified string wrappers don't survive translate-c.
+        if (target.result.os.tag == .windows) tc.defineCMacro("_FORTIFY_SOURCE", "0");
+        test_mod.addImport(ch.name, tc.createModule());
+    }
     const test_filters = b.option([]const []const u8, "test-filter", "Only run tests whose name contains this") orelse &[0][]const u8{};
     const tests = b.addTest(.{ .root_module = test_mod, .filters = test_filters });
     const run_tests = b.addRunArtifact(tests);
@@ -88,7 +113,7 @@ pub fn build(b: *std.Build) void {
     const node = b.addExecutable(.{ .name = "epic-zig", .root_module = node_mod });
     b.installArtifact(node);
     const run_node = b.addRunArtifact(node);
-    if (b.args) |args| run_node.addArgs(args);
+    run_node.addPassthruArgs();
     const run_step = b.step("run", "Run the node (zig build run -- --data-dir DIR --peer HOST:PORT)");
     run_step.dependOn(&run_node.step);
 
@@ -101,7 +126,7 @@ pub fn build(b: *std.Build) void {
     fetch_mod.addImport("epic", test_mod);
     const fetch = b.addExecutable(.{ .name = "epic-fetch", .root_module = fetch_mod });
     const run_fetch = b.addRunArtifact(fetch);
-    if (b.args) |args| run_fetch.addArgs(args);
+    run_fetch.addPassthruArgs();
     const th_mod = b.createModule(.{
         .root_source_file = b.path("tools/txhashset.zig"),
         .target = target,
@@ -110,7 +135,7 @@ pub fn build(b: *std.Build) void {
     th_mod.addImport("epic", test_mod);
     const th_exe = b.addExecutable(.{ .name = "epic-txhashset", .root_module = th_mod });
     const run_th = b.addRunArtifact(th_exe);
-    if (b.args) |args| run_th.addArgs(args);
+    run_th.addPassthruArgs();
     const th_step = b.step("txhashset", "Download a txhashset archive and check roots against the real header");
     th_step.dependOn(&run_th.step);
     const probe_mod = b.createModule(.{
@@ -121,7 +146,7 @@ pub fn build(b: *std.Build) void {
     probe_mod.addImport("epic", test_mod);
     const probe_exe = b.addExecutable(.{ .name = "epic-probe", .root_module = probe_mod });
     const run_probe = b.addRunArtifact(probe_exe);
-    if (b.args) |args| run_probe.addArgs(args);
+    run_probe.addPassthruArgs();
     const probe_step = b.step("probe", "Check ping, peer addrs, headers and compact blocks against a node");
     probe_step.dependOn(&run_probe.step);
     const pt_mod = b.createModule(.{
@@ -132,7 +157,7 @@ pub fn build(b: *std.Build) void {
     pt_mod.addImport("epic", test_mod);
     const pt_exe = b.addExecutable(.{ .name = "epic-peertest", .root_module = pt_mod });
     const run_pt = b.addRunArtifact(pt_exe);
-    if (b.args) |args| run_pt.addArgs(args);
+    run_pt.addPassthruArgs();
     const pt_step = b.step("peertest", "Misbehave on purpose against a node (garbage|silent|idle|keepalive)");
     pt_step.dependOn(&run_pt.step);
     const bench_mod = b.createModule(.{
@@ -153,7 +178,7 @@ pub fn build(b: *std.Build) void {
     cp_mod.addImport("epic", test_mod);
     const cp_exe = b.addExecutable(.{ .name = "epic-checkpoints", .root_module = cp_mod });
     const run_cp = b.addRunArtifact(cp_exe);
-    if (b.args) |args| run_cp.addArgs(args);
+    run_cp.addPassthruArgs();
     const cp_step = b.step("checkpoints", "Print header hashes at given heights from a node");
     cp_step.dependOn(&run_cp.step);
     const kh_mod = b.createModule(.{
@@ -164,7 +189,7 @@ pub fn build(b: *std.Build) void {
     kh_mod.addImport("epic", test_mod);
     const kh_exe = b.addExecutable(.{ .name = "epic-kernelhist", .root_module = kh_mod });
     const run_kh = b.addRunArtifact(kh_exe);
-    if (b.args) |args| run_kh.addArgs(args);
+    run_kh.addPassthruArgs();
     const kh_step = b.step("kernelhist", "Time kernel history validation on a synced data dir");
     kh_step.dependOn(&run_kh.step);
     const compact_mod = b.createModule(.{
@@ -175,7 +200,7 @@ pub fn build(b: *std.Build) void {
     compact_mod.addImport("epic", test_mod);
     const compact_exe = b.addExecutable(.{ .name = "epic-compact", .root_module = compact_mod });
     const run_compact = b.addRunArtifact(compact_exe);
-    if (b.args) |args| run_compact.addArgs(args);
+    run_compact.addPassthruArgs();
     const compact_step = b.step("compact", "Compact a data dir with a chosen horizon and check the result");
     compact_step.dependOn(&run_compact.step);
     const ps_mod = b.createModule(.{
@@ -186,14 +211,14 @@ pub fn build(b: *std.Build) void {
     ps_mod.addImport("epic", test_mod);
     const ps_exe = b.addExecutable(.{ .name = "epic-peerscan", .root_module = ps_mod });
     const run_ps = b.addRunArtifact(ps_exe);
-    if (b.args) |args| run_ps.addArgs(args);
+    run_ps.addPassthruArgs();
     const ps_step = b.step("peerscan", "Check which peers in a list complete a handshake");
     ps_step.dependOn(&run_ps.step);
     const fetch_step = b.step("fetch", "Fetch headers/blocks from a node (zig build fetch -- host:port dir count heights...)");
     fetch_step.dependOn(&run_fetch.step);
 }
 
-fn buildRoaring(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode) *std.Build.Step.Compile {
+fn buildRoaring(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.Optimize) *std.Build.Step.Compile {
     const lib = b.addLibrary(.{
         .name = "roaring",
         .linkage = .static,
@@ -220,7 +245,7 @@ fn buildRoaring(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.b
     return lib;
 }
 
-fn buildRandomX(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode) *std.Build.Step.Compile {
+fn buildRandomX(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.Optimize) *std.Build.Step.Compile {
     const lib = b.addLibrary(.{
         .name = "randomx",
         .linkage = .static,
@@ -270,7 +295,7 @@ fn buildRandomX(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.b
     return lib;
 }
 
-fn buildRocksDB(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode) *std.Build.Step.Compile {
+fn buildRocksDB(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.Optimize) *std.Build.Step.Compile {
     const srcs = @import("build/rocksdb_sources.zig");
     const lib = b.addLibrary(.{
         .name = "rocksdb",

@@ -5,7 +5,7 @@
 //! not depend on the JIT/AES flags, so we use the fastest flags the CPU offers.
 const std = @import("std");
 
-const rx = @cImport(@cInclude("randomx.h"));
+const rx = @import("randomx_c");
 
 pub const SEEDHASH_EPOCH_BLOCKS: u64 = 1000;
 pub const SEEDHASH_EPOCH_LAG: u64 = 60;
@@ -149,12 +149,12 @@ test "zero-input hash matches the Rust wrapper vector, and pool reuse is stable"
         58,  219, 87,  205, 58, 5,   219, 157, 210, 19, 148, 114, 219, 191, 100, 122,
         49,  51,  224, 67,  83, 184, 50,  73,  105, 255, 58, 230, 35,  20,  232, 244,
     };
-    const input = [_]u8{0} ** 128;
-    const seed = [_]u8{0} ** 32;
+    const input = @as([128]u8, @splat(0));
+    const seed = @as([32]u8, @splat(0));
     try std.testing.expectEqualSlices(u8, &expected, &try mgr.hash(seed, &input));
     try std.testing.expectEqualSlices(u8, &expected, &try mgr.hash(seed, &input));
     // a different seed gives a different hash
-    const seed2 = [_]u8{1} ** 32;
+    const seed2 = @as([32]u8, @splat(1));
     const other = try mgr.hash(seed2, &input);
     try std.testing.expect(!std.mem.eql(u8, &expected, &other));
 }

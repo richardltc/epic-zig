@@ -190,7 +190,7 @@ test "headers, blocks, heads, sums, spent and output positions" {
     try db.saveBlockSums(&b, gh, BlockSums.zero);
     const spent = [_]CommitPos{ .{ .pos = 5, .height = 2 }, .{ .pos = 9, .height = 3 } };
     try db.saveSpentIndex(&b, gh, &spent);
-    const c: Commitment = .{ .bytes = [_]u8{9} ** 33 };
+    const c: Commitment = .{ .bytes = @as([33]u8, @splat(9)) };
     try db.saveOutputPosHeight(&b, c, 42, 7);
 
     // visible inside the batch, not outside, until commit

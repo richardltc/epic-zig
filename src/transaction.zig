@@ -542,7 +542,7 @@ fn weightAsBlockFn(input_len: usize, output_len: usize, kernel_len: usize) usize
 pub const BlindingFactor = struct {
     bytes: [32]u8,
 
-    pub const zero: BlindingFactor = .{ .bytes = [_]u8{0} ** 32 };
+    pub const zero: BlindingFactor = .{ .bytes = @as([32]u8, @splat(0)) };
 
     pub fn isZero(self: BlindingFactor) bool {
         return std.mem.allEqual(u8, &self.bytes, 0);
@@ -904,9 +904,9 @@ test "kernel hash always uses the v1 layout" {
     var manual = std.crypto.hash.blake2.Blake2b256.init(.{});
     manual.update(&[_]u8{0});
     manual.update(&[_]u8{ 0, 0, 0, 0, 0, 0, 0, 10 });
-    manual.update(&[_]u8{0} ** 8);
-    manual.update(&[_]u8{0} ** 33);
-    manual.update(&[_]u8{0} ** 64);
+    manual.update(&@as([8]u8, @splat(0)));
+    manual.update(&@as([33]u8, @splat(0)));
+    manual.update(&@as([64]u8, @splat(0)));
     var out: [32]u8 = undefined;
     manual.final(&out);
     try testing.expectEqualSlices(u8, &out, &k.hash().bytes);
@@ -944,11 +944,11 @@ test "fully valid transaction: build, sign, validate, round-trip" {
     const gpa = testing.allocator;
     // in: 100 (blind a); out: 90 (blind b); fee 10; kernel excess = (b - a + offset... ) use offset 0
     // Balance:  out + fee*H - in  == excess  =>  (b - a) * G, so excess key k = b - a.
-    var a = [_]u8{0} ** 32;
+    var a = @as([32]u8, @splat(0));
     a[31] = 3;
-    var b = [_]u8{0} ** 32;
+    var b = @as([32]u8, @splat(0));
     b[31] = 10;
-    var k = [_]u8{0} ** 32; // k = b - a = 7
+    var k = @as([32]u8, @splat(0)); // k = b - a = 7
     k[31] = 7;
 
     const in_commit = try Commitment.commit(100, &a);
@@ -958,7 +958,7 @@ test "fully valid transaction: build, sign, validate, round-trip" {
     var kernel = TxKernel.withFeatures(.{ .plain = .{ .fee = 10 } });
     kernel.excess = excess;
     const msg = kernel.msgToSign();
-    const seed = [_]u8{9} ** 32;
+    const seed = @as([32]u8, @splat(9));
     kernel.excess_sig = crypto.signKernel(&k, &msg, &seed).?;
     try kernel.verify();
 
@@ -996,7 +996,7 @@ test "fully valid transaction: build, sign, validate, round-trip" {
 }
 
 pub fn testSecret(v: u8) [32]u8 {
-    var k = [_]u8{0} ** 32;
+    var k = @as([32]u8, @splat(0));
     k[31] = v;
     return k;
 }
@@ -1008,7 +1008,7 @@ pub fn testTx(gpa: std.mem.Allocator, in_value: u64, in_blind: u8, out_value: u6
     var kernel = TxKernel.withFeatures(.{ .plain = .{ .fee = fee } });
     kernel.excess = try Commitment.commit(0, &k);
     const msg = kernel.msgToSign();
-    kernel.excess_sig = crypto.signKernel(&k, &msg, &([_]u8{seed} ** 32)).?;
+    kernel.excess_sig = crypto.signKernel(&k, &msg, &(@as([32]u8, @splat(seed)))).?;
     const ins = try gpa.dupe(Input, &.{.{ .features = .plain, .commit = try Commitment.commit(in_value, &a) }});
     const outs = try gpa.dupe(Output, &.{.{ .features = .plain, .commit = try Commitment.commit(out_value, &b), .proof = RangeProof.zero }});
     const kerns = try gpa.dupe(TxKernel, &.{kernel});
@@ -1058,14 +1058,14 @@ test "aggregate cuts through dependent transactions; deaggregate undoes one" {
 test "unsorted or duplicate bodies are rejected" {
     const gpa = testing.allocator;
     var ins = [_]Input{
-        .{ .features = .plain, .commit = .{ .bytes = [_]u8{1} ** 33 } },
-        .{ .features = .plain, .commit = .{ .bytes = [_]u8{1} ** 33 } },
+        .{ .features = .plain, .commit = .{ .bytes = @as([33]u8, @splat(1)) } },
+        .{ .features = .plain, .commit = .{ .bytes = @as([33]u8, @splat(1)) } },
     };
     var body: TransactionBody = .{ .inputs = &ins, .outputs = &.{}, .kernels = &.{} };
     try testing.expectError(error.DuplicateError, body.verifySorted(gpa));
     var ins2 = [_]Input{
-        .{ .features = .plain, .commit = .{ .bytes = [_]u8{1} ** 33 } },
-        .{ .features = .plain, .commit = .{ .bytes = [_]u8{2} ** 33 } },
+        .{ .features = .plain, .commit = .{ .bytes = @as([33]u8, @splat(1)) } },
+        .{ .features = .plain, .commit = .{ .bytes = @as([33]u8, @splat(2)) } },
     };
     body.inputs = &ins2;
     try sortByHash(Input, gpa, body.inputs);

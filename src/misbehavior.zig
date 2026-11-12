@@ -24,6 +24,7 @@ const bad = [_][]const u8{
     "PolicyIsNotAllowed",
     "InvalidSortAlgo",
     "ThereIsNotPolicy",
+    "InvalidBottles",
     "InvalidBlockHeight",
     "DifficultyTooLow",
     "WrongTotalDifficulty",

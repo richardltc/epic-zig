@@ -191,7 +191,7 @@ test "randomx proof is checked against the header" {
     const d = try v.toDifficulty(.mainnet, h);
     const want = fromProofHash(&good);
     try testing.expect(d.eql(want));
-    h.pow.proof = .{ .randomx = .{ .hash = [_]u8{7} ** 32 } };
+    h.pow.proof = .{ .randomx = .{ .hash = @as([32]u8, @splat(7)) } };
     try testing.expectError(error.InvalidPow, v.verifySize(h));
 }
 
@@ -207,17 +207,17 @@ test "progpow proof is checked against the header" {
     try v.verifySize(h);
     const d = try v.toDifficulty(.mainnet, h);
     try testing.expect(d.eql(fromProofHash(&r.digestBytes())));
-    h.pow.proof = .{ .progpow = .{ .mix = [_]u8{1} ** 32 } };
+    h.pow.proof = .{ .progpow = .{ .mix = @as([32]u8, @splat(1)) } };
     try testing.expectError(error.InvalidPow, v.verifySize(h));
 }
 
 test "difficulty from hash saturates and cuckoo difficulty uses the graph weight" {
     // (2^256-1)/1 saturates at u64 max
-    var one = [_]u8{0} ** 32;
+    var one = @as([32]u8, @splat(0));
     one[31] = 1;
     try testing.expectEqual(@as(?u64, std.math.maxInt(u64)), fromProofHash(&one).num[0]);
     // 2^255 -> 1
-    var big = [_]u8{0} ** 32;
+    var big = @as([32]u8, @splat(0));
     big[0] = 0x80;
     try testing.expectEqual(@as(?u64, 1), fromProofHash(&big).num[2]);
 

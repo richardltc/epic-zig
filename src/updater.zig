@@ -267,7 +267,7 @@ fn tidy(io: Io, exe_dir: Io.Dir, exe_base: []const u8) void {
 /// into it (this function then does not return). Returns normally when the
 /// node should carry on with the running version.
 pub fn run(gpa: std.mem.Allocator, io: Io, args: []const []const u8, environ: *std.process.Environ.Map) void {
-    if (builtin.mode == .Debug) return;
+    if (builtin.mode == .debug) return;
     if (environ.get(RESTARTED_ENV) != null) {
         logging.info("Updated to Epic-Zig {s}", .{VERSION});
         return;

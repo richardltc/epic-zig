@@ -25,7 +25,7 @@ pub const ShortId = struct {
         return hash_mod.hashOf(self);
     }
     pub fn fromHex(s: []const u8) ShortId {
-        var out: ShortId = .{ .bytes = [_]u8{0} ** SIZE };
+        var out: ShortId = .{ .bytes = @as([SIZE]u8, @splat(0)) };
         _ = std.fmt.hexToBytes(&out.bytes, s) catch unreachable;
         return out;
     }

@@ -2,12 +2,7 @@
 //! is what the leaf set and prune list files use.
 const std = @import("std");
 
-const r = @cImport({
-    // Zig's C translator can't parse arm_neon.h; the header only needs NEON
-    // for inline helpers we don't use (the compiled library still uses it).
-    @cDefine("DISABLENEON", "1");
-    @cInclude("roaring/roaring.h");
-});
+const r = @import("roaring_c");
 
 pub const Bitmap = struct {
     bm: *r.roaring_bitmap_t,

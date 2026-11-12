@@ -40,7 +40,7 @@ pub const Proof = union(enum) {
     progpow: struct { mix: [32]u8 },
 
     pub fn zero(proof_size: usize, min_edge_bits: u8) Proof {
-        return .{ .cuckoo = .{ .edge_bits = min_edge_bits, .nonces = [_]u64{0} ** MAX_PROOF_NONCES, .n = @intCast(proof_size) } };
+        return .{ .cuckoo = .{ .edge_bits = min_edge_bits, .nonces = @as([MAX_PROOF_NONCES]u64, @splat(0)), .n = @intCast(proof_size) } };
     }
 
     pub fn cuckooNonces(self: *const Proof) ?[]const u64 {
@@ -85,7 +85,7 @@ pub const Proof = union(enum) {
                 try ser.writeU8(w, 0);
                 if (w.mode != .hash) try ser.writeU8(w, c.edge_bits);
                 const nonce_bits: usize = c.edge_bits;
-                var buf = [_]u8{0} ** ((64 * MAX_PROOF_NONCES + 7) / 8);
+                var buf = @as([(64 * MAX_PROOF_NONCES + 7) / 8]u8, @splat(0));
                 const bits_len = nonce_bits * c.n;
                 for (c.nonces[0..c.n], 0..) |nonce, n| {
                     var bit: usize = 0;
@@ -113,14 +113,14 @@ pub const Proof = union(enum) {
         switch (try r.readU8()) {
             0 => {
                 const edge_bits = try r.readU8();
-                if (edge_bits == 0 or edge_bits > 64) return error.CorruptedData;
+                if (edge_bits == 0 or edge_bits >= 64) return error.CorruptedData;
                 const proof_size = r.params.proof_size;
                 if (proof_size > MAX_PROOF_NONCES) return error.CorruptedData;
                 const nonce_bits: usize = edge_bits;
                 const bits_len = nonce_bits * proof_size;
                 const bytes_len = (bits_len + 7) / 8;
                 const bits = try r.readFixedBytes(bytes_len);
-                var nonces = [_]u64{0} ** MAX_PROOF_NONCES;
+                var nonces = @as([MAX_PROOF_NONCES]u64, @splat(0));
                 for (0..proof_size) |n| {
                     var nonce: u64 = 0;
                     for (0..nonce_bits) |bit| {
@@ -157,7 +157,7 @@ pub const ProofOfWork = struct {
             .secondary_scaling = 1,
             .nonce = 0,
             .proof = Proof.zero(chain.proofSize(), chain.minEdgeBits()),
-            .seed = [_]u8{0} ** 32,
+            .seed = @as([32]u8, @splat(0)),
         };
     }
 
@@ -538,7 +538,7 @@ fn hex32(comptime s: []const u8) Hash {
 }
 
 fn cuckooProof(edge_bits: u8, comptime nonces_in: []const u64) Proof {
-    var nonces = [_]u64{0} ** MAX_PROOF_NONCES;
+    var nonces = @as([MAX_PROOF_NONCES]u64, @splat(0));
     for (nonces_in, 0..) |n, i| nonces[i] = n;
     return .{ .cuckoo = .{ .edge_bits = edge_bits, .nonces = nonces, .n = @intCast(nonces_in.len) } };
 }
@@ -574,7 +574,7 @@ pub fn genesisFloo() Block {
             406986280, 416797005, 418935317, 429007407, 439527429, 484809502, 486257104, 495589543, 495892390, 525019296,
             529899691, 531685572,
         }),
-        .seed = [_]u8{0} ** 32,
+        .seed = @as([32]u8, @splat(0)),
     };
     return Block.withHeader(h);
 }
@@ -607,7 +607,7 @@ pub fn genesisMain() Block {
             381697287, 389274717, 403108317, 409994705, 411629694, 431823422, 441976653, 521469643, 521868369, 523044572,
             524964447, 530250249,
         }),
-        .seed = [_]u8{0} ** 32,
+        .seed = @as([32]u8, @splat(0)),
     };
     return Block.withHeader(h);
 }
@@ -684,7 +684,7 @@ test "foundation data has the expected checksum and indexes commitments" {
 
 test "cuckoo proof bit packing round trip" {
     const gpa = testing.allocator;
-    const p = cuckooProof(29, &[_]u64{1} ** 42);
+    const p = cuckooProof(29, &@as([42]u64, @splat(1)));
     const bytes = try ser.serVec(gpa, p, ser.ProtocolVersion.local());
     defer gpa.free(bytes);
     try testing.expectEqual(@as(usize, 1 + 1 + (29 * 42 + 7) / 8), bytes.len);

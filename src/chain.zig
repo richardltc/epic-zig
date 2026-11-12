@@ -51,6 +51,7 @@ pub const Error = error{
     PolicyIsNotAllowed,
     InvalidSortAlgo,
     ThereIsNotPolicy,
+    InvalidBottles,
     InvalidBlockHeight,
     DifficultyTooLow,
     WrongTotalDifficulty,
@@ -498,9 +499,13 @@ pub const Chain = struct {
         if (!feijoada.isAllowedPolicy(self.cfg.policy.allowed_policies, header.height, header.policy)) return error.PolicyIsNotAllowed;
         const cfg_policy = self.cfg.policy.policy(header.policy) orelse return error.ThereIsNotPolicy;
         _ = cfg_policy;
+        // 4.1.x: the bottles must be well formed for the era's active policy
+        const active = self.cfg.policy.policy(consensus.emittedPolicy(header.height)) orelse return error.ThereIsNotPolicy;
+        feijoada.validateBottles(active, header.bottles) catch return error.InvalidBottles;
         const hsrc = HeaderSource{ .db = &self.db, .batch = batch, .cache = &self.header_cache, .gpa = self.gpa };
         const bottles = header_iter.bottlesCursor(&hsrc, prev.hash(), header.policy);
-        const next = consensus.nextPolicy(self.cfg.policy, header.policy, bottles) catch return error.ThereIsNotPolicy;
+        const next = consensus.nextPolicy(self.cfg.policy, header.policy, bottles) catch return error.InvalidBottles;
+        if (!next[1].eql(header.bottles)) return error.InvalidBottles;
         if (next[0] != algoForPolicy(header.pow.proof)) return error.InvalidSortAlgo;
 
         if (header.height != prev.height + 1) return error.InvalidBlockHeight;

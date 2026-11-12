@@ -1,8 +1,8 @@
 //! Smoke tests proving each vendored native library builds and links.
 const std = @import("std");
-const roaring = @cImport(@cInclude("roaring/roaring.h"));
-const rx = @cImport(@cInclude("randomx.h"));
-const rdb = @cImport(@cInclude("rocksdb/c.h"));
+const roaring = @import("roaring_c");
+const rx = @import("randomx_c");
+const rdb = @import("rocksdb_c");
 
 test "croaring bitmap" {
     const r = roaring.roaring_bitmap_create();
@@ -20,11 +20,11 @@ test "randomx zero input matches Rust wrapper vector" {
     const flags = rx.randomx_get_flags();
     const cache = rx.randomx_alloc_cache(flags) orelse return error.CacheAlloc;
     defer rx.randomx_release_cache(cache);
-    const seed = [_]u8{0} ** 32;
+    const seed = @as([32]u8, @splat(0));
     rx.randomx_init_cache(cache, &seed, seed.len);
     const vm = rx.randomx_create_vm(flags, cache, null) orelse return error.VmCreate;
     defer rx.randomx_destroy_vm(vm);
-    const input = [_]u8{0} ** 128;
+    const input = @as([128]u8, @splat(0));
     var out: [32]u8 = undefined;
     rx.randomx_calculate_hash(vm, &input, input.len, &out);
     try std.testing.expectEqualSlices(u8, &expected, &out);
@@ -37,7 +37,7 @@ test "rocksdb put/get" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
     var path_buf: [256:0]u8 = undefined;
-    _ = try std.fmt.bufPrintZ(&path_buf, ".zig-cache/tmp/{s}", .{tmp.sub_path});
+    _ = try std.fmt.bufPrintSentinel(&path_buf, ".zig-cache/tmp/{s}", .{tmp.sub_path}, 0);
     var err: [*c]u8 = null;
     const db = rdb.rocksdb_open(opts, &path_buf, &err) orelse return error.Open;
     defer rdb.rocksdb_close(db);

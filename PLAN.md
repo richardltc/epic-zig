@@ -198,3 +198,13 @@ gave 1,100-1,850/s early and ~9,500/s later from the same peer. DNS seed + the s
 - Txhashset validation logs its progress every 10 s (kernel signatures / range proofs from `txhashset.progress`, kernel history from a counter in `validateKernelHistory`), after a tester saw ~5 minutes with no output.
 - SIGHUP (terminal closed, SSH dropped) now shuts down cleanly like SIGINT/SIGTERM, as the reference's `ctrlc` "termination" handler does; on Windows a closed console window / logoff / shutdown waits in the handler while the node shuts down (Windows ends the process when the handler returns).
 - `zig build run` exits as soon as Ctrl-C arrives, before the node finishes shutting down, so the node's last lines print after the shell prompt; run the binary directly to see the prompt after "Shutdown complete".
+
+## Reference v4.1.2 (checked 2026-11-12; was 4.0.4)
+Ported: header `bottles` must equal the expected bottles and be well formed (`validate_bottles`, new `InvalidBottles`, a ban);
+Cuckoo proof edge_bits 64 is now rejected on read; checkpoint 3,710,000 (kept in our opt-in `extended` table);
+foreign `ready_for_txs`; `GET /v1/version` and `/v1/status` public, and an unauthenticated `POST /v2/owner` may send one strict `get_status`.
+Not ported (Rust-internal or a different design here): kernel-data messages (removed upstream; we still accept the ids),
+the reworked syncer/peer maintenance (validated vs advertised tips, header probes, 4:1 healthy:unverified outbound), handshake
+deadline/pending-IP admission limits in the listener, router path normalisation, zip-extraction/range-proof hex hardening, TUI fixes.
+The toolchain moved to Zig 0.17.1: `@cImport` became translate-c steps (`src/c/c_*.h`, imports `secp_c`, `roaring_c`, `randomx_c`, `rocksdb_c`),
+`**` became `@splat`, and the optimize modes are `.debug/.safe/.fast`.

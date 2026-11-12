@@ -48,7 +48,7 @@ Sending from a wallet through this node has not yet been tested with real funds.
 
 ## Building
 
-Requires [Zig 0.16](https://ziglang.org/download/). All C/C++ dependencies (secp256k1-zkp, RandomX, RocksDB,
+Requires [Zig 0.17.1](https://ziglang.org/download/). All C/C++ dependencies (secp256k1-zkp, RandomX, RocksDB,
 CRoaring) are vendored in `vendor/` and built by `build.zig`; nothing else needs to be installed.
 
 ```

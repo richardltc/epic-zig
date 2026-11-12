@@ -1,6 +1,6 @@
 # epic-zig
 
-A Zig 0.16 rewrite of the Epic Cash node (Rust reference: `../epic`, v4.0.4), using RocksDB. It must stay
+A Zig 0.17 rewrite of the Epic Cash node (Rust reference: `../epic`, v4.1.2; see PLAN.md for what of 4.1.x is ported), using RocksDB. It must stay
 wire- and consensus-compatible with the Rust node and behave like it (same settings, defaults, API, log wording),
 only faster. `PLAN.md` records what has been built and why.
 
